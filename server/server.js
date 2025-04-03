@@ -1,61 +1,73 @@
 import express from "express";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
-import { MongoClient, ObjectId } from "mongodb";
+import connection from "./connection.js";
+import {dirname,join} from 'path'
+import { fileURLToPath } from "url"; 
+import todoSchema from "./models/todo.model.js"
 
-const client = new MongoClient("mongodb://127.0.0.1:27017");
-const __dirname = join(dirname(dirname(fileURLToPath(import.meta.url))), "client");
-const app = express();
-app.use(express.static(__dirname));
-app.use(express.urlencoded({ extended: true }));
+//client path
+const client_path = join(dirname(dirname(fileURLToPath(import.meta.url))),"client")
+//create the server
+const app = express()
+//middleware for json data
 app.use(express.json());
+//port number
+const port = 3000
 
-let collection;
+app.use(express.static(client_path))
 
-async function connectDB() {
-    try {
-        await client.connect();
-        const db = client.db("toDo");
-        collection = db.collection("tasks");
-
-        app.listen(3000, () => {
-            console.log("running");
-        });
-    } catch (error) {
-        console.error(error.message);
+//add task
+app.post('/send-data',async(req,res)=>{
+    try{
+        console.log(req.body)
+        const {task} = req.body
+        if(!task){
+            return res.status(404).send({error:"Task is required"})
+        }
+        const data = await todoSchema.create({task})
+        res.status(201).send(data)
     }
-}
-
-connectDB();
-
-//add data to database 
-app.post("/add-task", async (req, res) => {
-    try {
-        await collection.insertOne(req.body);
-        res.status(200).redirect("/");
-    } catch (error) {
-        res.status(500).send(error.message);
-    }
-});
-
-
-//get data api
-app.get("/getdata",async (req,res)=>{
-    const data = await collection.find({}).toArray()
-    res.send(JSON.stringify(data))
-    
+   catch(err){
+    res.status(500).send({error:err})
+   }
 })
 
-//update-data
-app.post("/update/:id",async (req,res)=>{
-    const {id} = req.params
-    await collection.updateOne({_id:new ObjectId(id)},{$set:req.body})
-    res.redirect('/')
+//send the tasks to frontend
+app.get('/tasks',async(req,res)=>{
+    try{
+        const data = await todoSchema.find()
+        res.status(200).send(JSON.stringify(data))
+    }
+    catch(err){
+        res.status(500).send({error:err})
+    }
 })
 
-//delete-data
-app.get("/delete/:id",async (req,res)=>{
+app.post('/edit/:id',async(req,res)=>{
+   
     const {id} = req.params
-    await collection.deleteOne({_id:new ObjectId(id)})
-    res.status(200).json({message:"Deleted Success"})
+    let task = req.body.task
+    const response = await todoSchema.findByIdAndUpdate(
+        id,
+        {task},
+        {new:true}
+    )
+    res.status(200).send("Updated")
+})
+
+app.get('/delete/:id',async(req,res)=>{
+    const {id} = req.params
+    await todoSchema.findByIdAndDelete(
+        id,
+        {new:true}
+    )
+    res.status(200).json("Worked")
+})
+
+
+
+//connection to databse and also running the server
+connection().then(()=>{
+    app.listen(port,()=>{
+        console.log("Server Running")
+    })
 })
